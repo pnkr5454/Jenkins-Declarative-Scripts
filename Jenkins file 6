@@ -1,0 +1,33 @@
+pipeline{
+    agent any
+     tools{
+        maven 'maven1'
+    }
+    stages{
+        stage("git checkout from scm"){
+            steps{
+                git url: 'https://github.com/pnkr5454/my-app2021'
+            }
+        }
+        stage("publish to sonarqube"){
+            steps{
+                withSonarQubeEnv('sonarqube7') {
+                     sh "mvn sonar:sonar"
+                }
+            }
+        }
+        stage("Quality gate checkouts"){
+            steps{
+                script{
+                    timeout(time:1,unit:'HOURS'){
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                          error "Pipeline aborted due to quality gate failure: ${qg.status}"  
+                        }
+                    }
+                }
+            }
+        }
+        
+    }
+ }
