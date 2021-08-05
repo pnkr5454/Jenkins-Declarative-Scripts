@@ -1,0 +1,49 @@
+pipeline{
+    agent any
+    environment{
+        DOCKER_TAG = "${getLatestVersion()}"
+    }
+    stages{
+        stage("Source"){
+            steps{
+                git 'https://github.com/javahometech/my-app'
+            }
+        }
+        stage("Maven Build"){
+            steps{
+                sh "mvn clean package"
+            }
+        }
+        stage("Docker Build"){
+            steps{
+                sh "docker build . -t kammana/2021app:${env.DOCKER_TAG}"
+            }
+        }
+        stage("Docker Hub Push"){
+            steps{
+                withCredentials([string(credentialsId: 'docker-hub', variable: 'hubPwd')]) {
+                    sh "docker login -u kammana -p ${hubPwd}"
+                    sh "docker push kammana/2021app:${env.DOCKER_TAG}"
+                }
+                
+            }
+        }
+        stage("Deploy To Dev"){
+            steps{
+                withCredentials([string(credentialsId: 'docker-hub', variable: 'hubPwd')]) {
+                    sshagent(['docker-dev']) {
+                        
+                        sh "ssh -o StrictHostKeyChecking=no ec2-user@172.31.6.59 docker rm -f javahomeapp"
+                        sh "ssh ec2-user@172.31.6.59 docker image prune -a -f --filter 'label=app=my-app'"
+                        sh "ssh ec2-user@172.31.6.59 docker run -d -p 8080:8080 --name javahomeapp kammana/2021app:${env.DOCKER_TAG}"
+                    }
+                }
+                
+            }
+        }
+    }
+}
+
+def getLatestVersion(){
+    return sh(returnStdout: true, script: 'git rev-parse --short HEAD')
+}
