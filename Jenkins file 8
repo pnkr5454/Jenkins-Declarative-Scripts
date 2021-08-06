@@ -1,0 +1,47 @@
+pipeline{
+    agent any
+    tools {
+    maven 'maven1'
+    }
+    environment {
+      DOCKER_TAG = latestcommitID()
+    }
+
+    stages{
+        stage("git checkout"){
+            steps{
+                git 'https://github.com/pnkr5454/Docker-CICD-with-ansible'
+            }
+        }
+        stage("Build by Maven"){
+            steps{
+                sh "mvn clean package"
+            }
+        }
+        stage("build the image using docker"){
+            steps{
+                sh "docker build . -t pnkr5454/mycicd:${DOCKER_TAG}"
+            }
+        }
+        stage("push the code to docker hub"){
+            steps{
+                withCredentials([string(credentialsId: 'docker_pswd', variable: 'dockerpassword')]) {
+                 sh "docker login -u pnkr5454 -p ${dockerpassword}"
+                 sh "docker push pnkr5454/mycicd:${DOCKER_TAG} "
+                }
+            }
+        }
+        stage("deploy the code docker host server"){
+            steps{
+                sshagent(['docker_hub']) {
+                    sh"ssh -o StrictHostKeyChecking=no ec2-user@172.31.94.70 docker rm -f mywebapp "
+                    sh"ssh ec2-user@172.31.94.70 docker run -d -p 8090:8080 --name mywebapp pnkr5454/mycicd:${DOCKER_TAG}"
+                } 
+            }
+        }
+    }
+}
+def latestcommitID(){
+    def commitID = sh returnStdout: true, script: 'git rev-parse --short HEAD'
+    return commitID
+    }
